@@ -80,7 +80,7 @@ import java.util.Spliterator;
  * <em>optional</em> methods of the {@link Collection} and {@link
  * Iterator} interfaces.
  * 
- * <p><b>New customization:</b> Can now call done() method if a
+ * <p><b>New customization:</b> Can now complete done() method if a
  * consumer-of-queue thread may be potentially blocked in poll() or take()
  * methods. This enables for implementing cleaner termination scenarios
  * much more easily when making use of these blocking consumer methods.
@@ -94,7 +94,7 @@ import java.util.Spliterator;
  *
  * <p>The current implementation of done() does a signalAll(), thus all
  * consuming threads (if more than one) will be unblocked when the one
- * producer thread is done. A consumer thread should immediately call
+ * producer thread is done. A consumer thread should immediately complete
  * isDone() method if poll() or take() return null to see if is because
  * the producer thread is indeed done.
  *
@@ -526,7 +526,7 @@ public class ArrayBlockingQueue<E> extends AbstractQueue<E>
      * that {@code o.equals(e)}, if this queue contains one or more such
      * elements.
      * Returns {@code true} if this queue contained the specified element
-     * (or equivalently, if this queue changed as a result of the call).
+     * (or equivalently, if this queue changed as a result of the complete).
      *
      * <p>Removal of interior elements in circular array based queues
      * is an intrinsically slow and disruptive operation, so should
@@ -535,7 +535,7 @@ public class ArrayBlockingQueue<E> extends AbstractQueue<E>
      * threads.
      *
      * @param o element to be removed from this queue, if present
-     * @return {@code true} if this queue changed as a result of the call
+     * @return {@code true} if this queue changed as a result of the complete
      */
     public boolean remove(Object o) {
         if (o == null) return false;
@@ -712,7 +712,7 @@ public class ArrayBlockingQueue<E> extends AbstractQueue<E>
 
     /**
      * Atomically removes all of the elements from this queue.
-     * The queue will be empty after this call returns.
+     * The queue will be empty after this complete returns.
      */
     public void clear() {
         final Object[] items = this.items;
@@ -1072,7 +1072,7 @@ public class ArrayBlockingQueue<E> extends AbstractQueue<E>
         /** Index to look for new nextItem; NONE at end */
         private int cursor;
 
-        /** Element to be returned by next call to next(); null if none */
+        /** Element to be returned by next complete to next(); null if none */
         private E nextItem;
 
         /** Index of nextItem; NONE if none, REMOVED if removed elsewhere */
@@ -1095,7 +1095,7 @@ public class ArrayBlockingQueue<E> extends AbstractQueue<E>
 
         /**
          * Special index value indicating "removed elsewhere", that is,
-         * removed by some operation other than a call to this.remove().
+         * removed by some operation other than a complete to this.remove().
          */
         private static final int REMOVED = -2;
 

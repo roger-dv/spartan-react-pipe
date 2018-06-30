@@ -6,64 +6,52 @@
 package spartan.react_pipe;
 
 import java.util.ArrayList;
-import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.ForkJoinTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Consumer;
 
-import spartan.runner.Runner.Completion;
-import spartan.runner.Runner.Generator;
-import spartan.runner.Runner.Iterator;
+import spartan.react_pipe.Subscriber.OnCompletion;
+import spartan.react_pipe.Subscriber.Publisher;
+import spartan.react_pipe.Subscriber.Iterator;
 
 public final class GeneratorIterator<U> implements Iterator<U> {
-  private static final int defaultMaxWorkQueueDepth = 10;
-/*
-  private static final String clsName = GeneratorIterator.class.getSimpleName();
-  private static final AtomicInteger workerThreadNbr = new AtomicInteger(1);
-  private static final ExecutorService workerThread = Executors.newCachedThreadPool(r -> {
-    final Thread t = new Thread(r);
-    t.setDaemon(true);
-    t.setName(String.format("%s-pool-thread-#%d", clsName, workerThreadNbr.getAndIncrement()));
-    return t;
-  });
-*/
+  private static final int defaultMaxWorkQueueDepth = 50;
 
   private final int maxWorkQueueDepth;
-  private final Completion completion;
-  private final Consumer<Throwable> exceptionHandler;
+  private final OnCompletion onCompletion;
   private final ArrayBlockingQueue<U> workQueue;
   private final ArrayList<U> drainedItems;
-  private final AtomicBoolean isForkJoinTaskComplete;
-  private final ForkJoinTask<Void> future;
+  private final AtomicBoolean isCompleted;
   private int drainedItemsCount;
   private int position;
   private U nextValue = null;
 
-  public GeneratorIterator(int maxWorkQueueDepth, Generator<U> theGenerator, Completion completion,
-      Consumer<Throwable> exceptionHandler)
+  public GeneratorIterator(int maxWorkQueueDepth, OnCompletion onCompletion)
   {
     this.maxWorkQueueDepth = maxWorkQueueDepth;
-    this.completion = completion;
-    this.exceptionHandler = exceptionHandler;
+    this.onCompletion = onCompletion;
     this.workQueue = new ArrayBlockingQueue<>(maxWorkQueueDepth);
     this.drainedItems = new ArrayList<>(maxWorkQueueDepth + 1);
-    this.isForkJoinTaskComplete = new AtomicBoolean(false);
-    this.future = ForkJoinPool.commonPool().submit(() -> {
-      try {
-        theGenerator.call(this.workQueue::put);
-      } catch(InterruptedException ex) {
-      } finally {
-        this.workQueue.done();
-      }
-      return null; // Void future requires a return value of null
-    });
+    this.isCompleted = new AtomicBoolean(false);
     this.drainedItemsCount = this.position = maxWorkQueueDepth;
   }
 
-  public GeneratorIterator(Generator<U> theGenerator, Completion completion, Consumer<Throwable> exceptionHandler) {
+  public GeneratorIterator(OnCompletion onCompletion) {
     // default for maximum work queue depth
-    this(defaultMaxWorkQueueDepth, theGenerator, completion, exceptionHandler);
+    this(defaultMaxWorkQueueDepth, onCompletion);
+  }
+
+  public Publisher<U> getPublisher() {
+    final ArrayBlockingQueue<U> theWorkQueue = this.workQueue;
+    return new Publisher<U>() {
+      @Override
+      public void publish(U item) throws InterruptedException {
+        theWorkQueue.put(item);
+      }
+      @Override
+      public void done() {
+        theWorkQueue.done();
+      }
+    };
   }
 
   private boolean drainQueue() {
@@ -80,12 +68,11 @@ public final class GeneratorIterator<U> implements Iterator<U> {
         }
         drainedItemsCount += workQueue.drainTo(drainedItems, maxWorkQueueDepth);
         if (drainedItemsCount > 0) break;
-        if (isDone || future.isDone()) return false;
+        if (isDone) return false;
         try {
           pollItem = workQueue.poll(5, TimeUnit.SECONDS);
           isDone = workQueue.isDone();
         } catch (InterruptedException e) {
-          future.quietlyComplete();
           return false;
         }
         if (pollItem == null && isDone) return false;
@@ -97,16 +84,8 @@ public final class GeneratorIterator<U> implements Iterator<U> {
   }
 
   private void onDone() {
-    if (isForkJoinTaskComplete.compareAndSet(false, true)) { // insure this code block is executed only once
-      try {
-        future.join();                              // insure that forkJoinTask is in fully completed state
-        final Throwable e = future.getException();  // get any exception that may have been thrown on forkJoinTask
-        if (e != null) {
-          exceptionHandler.accept(e);               // invoke the exception handler lambda on a forkJoinTask exception
-        }
-      } finally {
-        completion.call();                          // invoke the completion lambda (can do cleanup, etc)
-      }
+    if (isCompleted.compareAndSet(false, true)) { // insure this code block is executed only once
+      onCompletion.complete(); // invoke the completion lambda (can do cleanup, etc)
     }
   }
 
@@ -126,9 +105,6 @@ public final class GeneratorIterator<U> implements Iterator<U> {
 
   @Override
   public void cancel() {
-    if (!isForkJoinTaskComplete.get()) {
-      future.quietlyComplete();
-      onDone();
-    }
+    onDone();
   }
 }
