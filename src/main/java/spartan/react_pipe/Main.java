@@ -11,9 +11,12 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
+import static spartan.react_pipe.Subscriber.makeExecutorCompletionService;
+
 public class Main {
   private static final String progname = "genfib";
-  private static final ForkJoinPool executor = new ForkJoinPool();
+  private static final ForkJoinPool forkJoinPool = new ForkJoinPool();
+  private static final Subscriber.FuturesCompletion<Boolean> executor = makeExecutorCompletionService(forkJoinPool);
 
   private static final class ForkJoinPool extends java.util.concurrent.ForkJoinPool {
     private static final int  MAX_CAP = 0x7fff;  // max #workers - 1
@@ -35,20 +38,20 @@ public class Main {
   public static void main(String[] args) {
     System.out.printf("%s: Generate Fibonacci Sequence values%n", progname);
 
-    final double maxCeiling = args.length > 0 ? Double.parseDouble(args[0]) : 30 /* default */;
+    final double maxCeiling = args.length > 0 ? Math.floor(Double.parseDouble(args[0])) : 30d /* default */;
 
     final Subscriber.Iterator<Double> src = new GeneratorIterator<>(
             () -> System.out.printf("%s: [%s] source data generator done%n", progname, Thread.currentThread().getName()));
 
     final Subscriber.Publisher<Double> publisher = src.getPublisher();
 
-    final ForkJoinTask<?> fut = executor.submit(() -> {
-      final Stream<?> srcStrm = Subscriber.stream(src);
+    executor.submit(() -> {
+      final Stream<Double> srcStrm = Subscriber.stream(src);
       final String currThrdName = Thread.currentThread().getName();
-      srcStrm.forEach(item -> System.out.printf("%s: [%s] %s%n", progname, currThrdName, item));
-    });
+      srcStrm.forEach(item -> System.out.printf("%s: [%s] %.0f%n", progname, currThrdName, item));
+    }, Boolean.TRUE);
 
-    System.out.printf("%s: DEBUG: generator lambda invoked for max ceiling value of: %s%n", progname, maxCeiling);
+    System.out.printf("%s: DEBUG: generator lambda invoked for max ceiling value of: %.0f%n", progname, maxCeiling);
 
     final Function<Double, Long> generateFibonacciSequence = ceiling -> {
       final double max_ceiling = ceiling;
@@ -80,15 +83,22 @@ public class Main {
       return publishCallCount;
     };
 
-    final long countOfGeneratedNumbers = generateFibonacciSequence.apply(maxCeiling);
+    // publishes Fibonacci Sequence generation
+    final long countOfGenFibNbrs = generateFibonacciSequence.apply(maxCeiling);
 
-    System.out.printf("%s: [%s] %d Fibonacci Sequence numbers generated%n",
-            progname, Thread.currentThread().getName(), countOfGeneratedNumbers);
+    final String currThrdName = Thread.currentThread().getName();
 
-    fut.join();                              // insure that forkJoinTask is in fully completed state
-    final Throwable e = fut.getException();  // get any exception that may have been thrown on forkJoinTask
-    if (e != null) {
-      e.printStackTrace(System.err);
+    while(executor.count() > 0) {
+      try {
+        final String status = executor.take().get() ? "completed" : "incomplete";
+        System.out.printf("%s: [%s] Fibonacci Sequence consumer task status: %s%n", progname, currThrdName, status);
+      } catch (InterruptedException e) {
+        System.err.printf("%s [%s] waiting on Fibonacci Sequence consumer task interrupted%n", progname, currThrdName);
+      } catch (ExecutionException e) {
+        e.printStackTrace(System.err);
+      }
     }
+
+    System.out.printf("%s: [%s] %d Fibonacci Sequence numbers generated%n", progname, currThrdName, countOfGenFibNbrs);
   }
 }
