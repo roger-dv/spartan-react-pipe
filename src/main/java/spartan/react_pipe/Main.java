@@ -6,34 +6,15 @@
 package spartan.react_pipe;
 
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
-import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import static spartan.react_pipe.Subscriber.makeExecutorCompletionService;
 
 public class Main {
-  private static final String progname = "genfib";
-  private static final ForkJoinPool forkJoinPool = new ForkJoinPool();
+  static final String progname = "genfib";
+  private static final ForkJoinPoolEx forkJoinPool = new ForkJoinPoolEx();
   private static final Subscriber.FuturesCompletion<Boolean> executor = makeExecutorCompletionService(forkJoinPool);
-
-  private static final class ForkJoinPool extends java.util.concurrent.ForkJoinPool {
-    private static final int  MAX_CAP = 0x7fff;  // max #workers - 1
-    private static final Supplier<ForkJoinWorkerThreadFactory> makeThreadFactory = () ->
-    {
-      final AtomicInteger workerThreadNbr = new AtomicInteger(1);
-      return pool -> {
-        final ForkJoinWorkerThread t = defaultForkJoinWorkerThreadFactory.newThread(pool);
-        t.setDaemon(true);
-        t.setName(String.format("%s-pool-thread-#%d", progname, workerThreadNbr.getAndIncrement()));
-        return t;
-      };
-    };
-    private ForkJoinPool() {
-      super(Math.min(MAX_CAP, Runtime.getRuntime().availableProcessors()), makeThreadFactory.get(), null, true);
-    }
-  }
 
   public static void main(String[] args) {
     System.out.printf("%s: Generate Fibonacci Sequence values%n", progname);
