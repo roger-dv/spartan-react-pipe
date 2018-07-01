@@ -27,13 +27,13 @@ public interface Subscriber {
     void complete();
   }
 
-  interface FuturesCompletion<U> extends CompletionService<U> {
-    int count();
-  }
-
   static <U> Stream<U> stream(Iterator<U> iterator) {
     return StreamSupport
          .stream(Spliterators.spliteratorUnknownSize(iterator, Spliterator.ORDERED | Spliterator.IMMUTABLE), false);
+  }
+
+  interface FuturesCompletion<U> extends CompletionService<U> {
+    int count();
   }
 
   static <U> FuturesCompletion<U> makeExecutorCompletionService(Executor executor) {
