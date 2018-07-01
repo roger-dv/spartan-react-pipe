@@ -74,6 +74,7 @@ public class Main {
         final String status = executor.take().get() ? "completed" : "incomplete";
         System.out.printf("%s: [%s] Fibonacci Sequence consumer task status: %s%n", progname, currThrdName, status);
       } catch (InterruptedException e) {
+        forkJoinPool.shutdownNow();
         System.err.printf("%s [%s] waiting on Fibonacci Sequence consumer task interrupted%n", progname, currThrdName);
       } catch (ExecutionException e) {
         e.printStackTrace(System.err);
